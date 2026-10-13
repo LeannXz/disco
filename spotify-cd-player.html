@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Disco · Reproductor Spotify</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;800&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0d0a12;--ink:#f3eefb;--mute:#9a90ad;--accent:#7be0c3;--line:rgba(255,255,255,.1)}
+*{box-sizing:border-box;margin:0}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:radial-gradient(900px 600px at 30% 20%,color-mix(in srgb,var(--accent) 22%,transparent),transparent 70%),var(--bg);color:var(--ink);font:400 15px/1.4 "DM Sans",system-ui,sans-serif;overflow-x:hidden;transition:background .8s}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:8px}
+
+/* Conexión */
+#setup{position:fixed;inset:0;display:grid;place-items:center;padding:24px;z-index:10;background:var(--bg)}
+#setup .box{max-width:460px;display:grid;gap:14px}
+#setup h1{font:800 44px/1 Syne,sans-serif;letter-spacing:-.02em}
+#setup p,#setup li{color:var(--mute)}
+#setup ol{padding-left:18px;display:grid;gap:4px}
+#setup code{color:var(--ink);background:rgba(255,255,255,.08);padding:1px 6px;border-radius:5px;word-break:break-all}
+#setup input{background:rgba(255,255,255,.07);border:1px solid var(--line);color:var(--ink);padding:12px 14px;border-radius:10px;font:inherit}
+.cta{background:var(--accent);color:#06130f;font-weight:700;padding:12px 18px;border-radius:999px}
+#err{color:#ff8f8f;min-height:1.2em}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#2a2236;color:var(--ink);padding:10px 16px;border-radius:999px;opacity:0;pointer-events:none;transition:opacity .3s;z-index:20;max-width:90vw;text-align:center}#toast.on{opacity:1}
+
+/* Escena */
+main{min-height:100%;display:grid;grid-template-columns:minmax(340px,1fr) 1.1fr;gap:2vw;padding:3vh 4vw;align-items:center}
+.left{display:grid;gap:18px;justify-items:center;align-content:center;min-width:0}
+.stage{perspective:1300px;width:min(400px,78vw,38vh);aspect-ratio:1;position:relative}
+.tilt{width:100%;height:100%;transform-style:preserve-3d;transition:transform .25s ease-out}
+.cdwrap{width:100%;height:100%;transform-style:preserve-3d;transition:scale .6s cubic-bezier(.3,1.4,.5,1)}
+.paused .cdwrap{scale:.94}
+.disc,.edge{position:absolute;inset:0;border-radius:50%}
+.edge{background:#3b3550}.e1{transform:translateZ(-3px)}.e2{transform:translateZ(-6px);background:#241f33}
+.disc{transform:translateZ(0);overflow:hidden;box-shadow:0 0 0 1px rgba(255,255,255,.25)}
+.spin{position:absolute;inset:0;border-radius:50%;
+ background:repeating-radial-gradient(circle,rgba(0,0,0,.09) 0 1px,transparent 1px 3px),
+ conic-gradient(from 0deg,#e6e6f4,#8fa0ff,#f0f0fa,#ff9be0,#d8fff0,#8ff0ff,#e6e6f4,#b7a2ff,#f6f6ff,#e6e6f4)}
+.label{position:absolute;inset:31%;border-radius:50%;background:#222 center/cover;box-shadow:0 0 0 5px rgba(255,255,255,.55),0 0 0 7px rgba(0,0,0,.25)}
+.hole{position:absolute;inset:46.5%;border-radius:50%;background:var(--bg);box-shadow:0 0 0 4px rgba(255,255,255,.7)}
+.gloss{position:absolute;inset:0;border-radius:50%;pointer-events:none;mix-blend-mode:screen;
+ background:conic-gradient(from 25deg,transparent 0 18%,rgba(255,255,255,.55) 24%,transparent 31% 68%,rgba(255,255,255,.45) 74%,transparent 81%)}
+.shadow{position:absolute;left:10%;right:10%;bottom:-6%;height:10%;background:radial-gradient(closest-side,rgba(0,0,0,.6),transparent);filter:blur(6px)}
+.pauseico{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;transform:translateZ(30px)}
+.pauseico i{width:84px;height:84px;border-radius:50%;background:rgba(10,8,14,.6);backdrop-filter:blur(6px);display:flex;gap:10px;align-items:center;justify-content:center;opacity:0;scale:.5;transition:.35s cubic-bezier(.3,1.5,.5,1)}
+.pauseico i::before,.pauseico i::after{content:"";width:10px;height:32px;border-radius:3px;background:#fff}
+.paused .pauseico i{opacity:1;scale:1}
+
+.meta{text-align:center;max-width:400px}
+.meta h2{font:800 26px/1.1 Syne,sans-serif;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meta p{color:var(--mute);margin-top:4px}
+canvas#viz{width:min(400px,80vw);height:64px}
+.bar{width:min(400px,80vw);display:grid;grid-template-columns:38px 1fr 38px;gap:8px;align-items:center;color:var(--mute);font-size:12px;font-variant-numeric:tabular-nums}
+input[type=range]{-webkit-appearance:none;appearance:none;height:5px;border-radius:9px;background:linear-gradient(90deg,var(--accent) var(--p,0%),rgba(255,255,255,.15) var(--p,0%));cursor:pointer;width:100%}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#fff}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border:0;border-radius:50%;background:#fff}
+.ctrl{display:flex;align-items:center;gap:22px}
+.ctrl button{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;transition:transform .15s,background .2s}
+.ctrl button:hover{background:rgba(255,255,255,.08)}.ctrl button:active{transform:scale(.88)}
+.ctrl .play{width:62px;height:62px;background:var(--accent);color:#06130f}.ctrl .play:hover{background:var(--accent)}
+svg{width:22px;height:22px;fill:currentColor}
+.vol{display:flex;align-items:center;gap:10px;width:min(400px,80vw);color:var(--mute)}
+.vol svg{width:18px;height:18px;flex:none}
+
+/* Búsqueda */
+.search{width:min(400px,80vw);position:relative}
+.search input{width:100%;background:rgba(255,255,255,.07);border:1px solid var(--line);color:var(--ink);padding:10px 14px;border-radius:999px;font:inherit}
+#res{position:absolute;bottom:calc(100% + 6px);left:0;right:0;background:#17121f;border:1px solid var(--line);border-radius:14px;max-height:260px;overflow:auto;display:none;z-index:5}
+#res button{display:flex;gap:10px;align-items:center;width:100%;text-align:left;padding:8px 10px}
+#res button:hover{background:rgba(255,255,255,.07)}
+#res img{width:38px;height:38px;border-radius:6px}
+#res small{color:var(--mute);display:block}
+
+/* Letra */
+.lyrics{height:84vh;position:relative;overflow:hidden;perspective:900px;perspective-origin:30% 50%;
+ -webkit-mask-image:linear-gradient(transparent,#000 22%,#000 78%,transparent);mask-image:linear-gradient(transparent,#000 22%,#000 78%,transparent);transition:opacity .6s,filter .6s}
+.paused .lyrics{opacity:.45;filter:saturate(.3)}
+#lines{position:absolute;left:0;right:0;top:0;transform-style:preserve-3d;transition:transform .7s cubic-bezier(.2,.8,.2,1)}
+.ln{font:800 clamp(24px,3.1vw,44px)/1.15 Syne,sans-serif;letter-spacing:-.02em;padding:.32em 0;transform-origin:left center;transition:transform .7s cubic-bezier(.2,.8,.2,1),opacity .7s,filter .7s,color .5s;color:var(--ink)}
+.ln.on{color:var(--accent)}
+.note{color:var(--mute);font:500 18px "DM Sans";padding-top:40vh}
+.lyrics.swap #lines{animation:lin .8s cubic-bezier(.2,.8,.2,1)}
+@keyframes lin{from{opacity:0;translate:0 40px;filter:blur(10px)}}
+@media(max-width:820px){body{overflow:auto}main{grid-template-columns:1fr;height:auto}.lyrics{height:50vh}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<section id="setup">
+ <div class="box">
+  <h1>Disco</h1>
+  <p>Reproductor de Spotify con CD en 3D y letra sincronizada. Requiere Spotify Premium.</p>
+  <ol>
+   <li>Crea una app en <code>developer.spotify.com/dashboard</code> y activa "Web Playback SDK".</li>
+   <li>Agrega esta Redirect URI exacta: <code id="ruri"></code></li>
+   <li>Pega tu Client ID y conecta.</li>
+  </ol>
+  <input id="cid" placeholder="Client ID" autocomplete="off">
+  <button class="cta" id="login">Conectar con Spotify</button>
+  <div id="err"></div>
+ </div>
+</section>
+
+<main id="app" hidden>
+ <div class="left">
+  <div class="stage" id="stage">
+   <div class="shadow"></div>
+   <div class="tilt" id="tilt"><div class="cdwrap" id="cdwrap">
+     <div class="edge e2"></div><div class="edge e1"></div>
+     <div class="disc"><div class="spin" id="spin"><div class="label" id="label"></div></div><div class="hole"></div><div class="gloss"></div></div>
+     <div class="pauseico"><i></i></div>
+   </div></div>
+  </div>
+  <div class="meta"><h2 id="title">Elige una canción</h2><p id="artist">Busca abajo para empezar</p></div>
+  <canvas id="viz" width="800" height="128"></canvas>
+  <div class="bar"><span id="cur">0:00</span><input type="range" id="seek" min="0" max="1000" value="0" aria-label="Progreso"><span id="dur">0:00</span></div>
+  <div class="ctrl">
+   <button id="prev" aria-label="Anterior"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+   <button class="play" id="pp" aria-label="Reproducir o pausar"><svg id="ppi" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+   <button id="next" aria-label="Siguiente"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+  </div>
+  <div class="vol"><svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 4V5L7 9zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z"/></svg><input type="range" id="vol" min="0" max="100" value="60" aria-label="Volumen"></div>
+  <div class="search"><div id="res"></div><input id="q" placeholder="Buscar canción o artista" autocomplete="off"></div>
+ </div>
+ <div class="lyrics" id="lyrics"><div id="lines"><p class="note">La letra aparece aquí.</p></div></div>
+</main>
+
+<div id="toast" role="status"></div>
+<script>
+const $=s=>document.querySelector(s), LS=localStorage;
+const REDIR=location.origin+location.pathname;
+const REMOTE=/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)||location.hash==='#remote';
+const SCOPE='streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state';
+$('#ruri').textContent=REDIR; $('#cid').value=LS.cid||'';
+const err=m=>$('#err').textContent=m;
+let tt;const toast=m=>{const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('on'),4500)};
+
+/* ---------- Autenticación (PKCE) ---------- */
+const b64=b=>btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+$('#login').onclick=async()=>{
+  const id=$('#cid').value.trim(); if(!id) return err('Escribe tu Client ID.');
+  if(!crypto.subtle) return err('Abre la página desde http://127.0.0.1:PUERTO (no desde file://).');
+  LS.cid=id; const v=b64(crypto.getRandomValues(new Uint8Array(48))); LS.ver=v;
+  const ch=b64(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(v)));
+  location.href='https://accounts.spotify.com/authorize?'+new URLSearchParams({response_type:'code',client_id:id,scope:SCOPE,redirect_uri:REDIR,code_challenge_method:'S256',code_challenge:ch});
+};
+async function tokenReq(p){
+  const r=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:LS.cid,...p})});
+  const d=await r.json(); if(!r.ok) throw new Error(d.error_description||'Error de autenticación');
+  LS.tok=d.access_token; LS.exp=Date.now()+d.expires_in*1000; if(d.refresh_token) LS.ref=d.refresh_token;
+}
+async function token(){ if(Date.now()>LS.exp-60000) await tokenReq({grant_type:'refresh_token',refresh_token:LS.ref}); return LS.tok; }
+const api=async(path,opt={})=>{ const r=await fetch('https://api.spotify.com/v1'+path,{...opt,headers:{Authorization:'Bearer '+await token(),'Content-Type':'application/json'}}); return r.status===204?null:r.json().catch(()=>null); };
+
+(async()=>{
+  const code=new URLSearchParams(location.search).get('code');
+  try{
+    if(code){ await tokenReq({grant_type:'authorization_code',code,redirect_uri:REDIR,code_verifier:LS.ver}); history.replaceState({},'',REDIR); }
+    if(LS.ref){ await token(); start(); }
+  }catch(e){ err(e.message); }
+})();
+
+/* ---------- Reproductor ---------- */
+let player,deviceId,paused=true,pos=0,posAt=0,dur=1,curId=null,dir=1,lastPlaying=false;
+function applyState(p,ps,d,t){
+  paused=p; pos=ps; posAt=performance.now(); dur=d||1;
+  if(t&&t.id!==curId){ curId=t.id; onTrack(t); }
+  $('#ppi').innerHTML=paused?'<path d="M8 5v14l11-7z"/>':'<path d="M7 5h4v14H7zM13 5h4v14h-4z"/>';
+  $('#stage').classList.toggle('paused',paused);
+}
+/* Modo remoto (móvil): controla la app de Spotify del teléfono vía Web API */
+function startRemote(){
+  const call=async(m,path,quiet)=>{ const r=await fetch('https://api.spotify.com/v1/me/player'+path,{method:m,headers:{Authorization:'Bearer '+await token()}});
+    if(!r.ok&&!quiet){ const d=await r.json().catch(()=>null); toast(r.status===404?'Abre la app de Spotify en tu teléfono y reproduce algo primero.':(d?.error?.message||'Error '+r.status)); } return r; };
+  const poll=async()=>{ try{ const d=await api('/me/player'); if(d&&d.item) applyState(!d.is_playing,d.progress_ms,d.item.duration_ms,d.item); }catch(e){} };
+  window.pollNow=poll; deviceId='remote'; let vt;
+  player={activateElement(){},
+    togglePlay(){ const p=paused?pos:pos+(performance.now()-posAt); applyState(!paused,p,dur,null); call('PUT',paused?'/pause':'/play'); },
+    nextTrack(){ call('POST','/next').then(()=>setTimeout(poll,700)); },
+    previousTrack(){ call('POST','/previous').then(()=>setTimeout(poll,700)); },
+    seek(ms){ call('PUT','/seek?position_ms='+Math.round(ms)); },
+    setVolume(v){ clearTimeout(vt); vt=setTimeout(()=>call('PUT','/volume?volume_percent='+Math.round(v*100),true),250); }};
+  poll(); setInterval(poll,2500);
+}
+function start(){
+  $('#setup').hidden=true; $('#app').hidden=false;
+  $('#vol').value=LS.vol??60; setRange($('#vol'));
+  if(REMOTE) return startRemote();
+  const s=document.createElement('script'); s.src='https://sdk.scdn.co/spotify-player.js'; document.body.appendChild(s);
+  window.onSpotifyWebPlaybackSDKReady=()=>{
+    player=new Spotify.Player({name:'Disco 3D',volume:(LS.vol??60)/100,getOAuthToken:async cb=>cb(await token())});
+    player.addListener('ready',async({device_id})=>{ deviceId=device_id; await api('/me/player',{method:'PUT',body:JSON.stringify({device_ids:[device_id],play:false})}); });
+    player.addListener('player_state_changed',st=>{ if(st) applyState(st.paused,st.position,st.duration,st.track_window.current_track); });
+    ['initialization_error','authentication_error','account_error'].forEach(e=>player.addListener(e,m=>alert(m.message+(e==='account_error'?' (se necesita Premium)':''))));
+    player.connect();
+  };
+  $('#vol').value=LS.vol??60; setRange($('#vol'));
+}
+$('#pp').onclick=()=>{ if(!player||!deviceId) return toast('Conectando el reproductor… espera unos segundos.'); player.activateElement(); player.togglePlay(); };
+$('#prev').onclick=()=>{ if(!player) return; player.activateElement(); dir=-1; player.previousTrack(); };
+$('#next').onclick=()=>{ if(!player) return; player.activateElement(); dir=1; player.nextTrack(); };
+addEventListener('keydown',e=>{ if(e.code==='Space'&&e.target.tagName!=='INPUT'){e.preventDefault();player?.togglePlay();} });
+const setRange=r=>r.style.setProperty('--p',(r.value-r.min)/(r.max-r.min)*100+'%');
+$('#vol').oninput=e=>{ setRange(e.target); LS.vol=e.target.value; player?.setVolume(e.target.value/100); };
+$('#seek').oninput=e=>{ setRange(e.target); };
+$('#seek').onchange=e=>{ const ms=e.target.value/1000*dur; player?.seek(ms); pos=ms; posAt=performance.now(); curLine=-2; };
+
+/* Búsqueda */
+let qt; $('#q').oninput=e=>{ clearTimeout(qt); const q=e.target.value.trim(); if(!q){$('#res').style.display='none';return;}
+  qt=setTimeout(async()=>{ const d=await api('/search?type=track&limit=10&q='+encodeURIComponent(q)); const it=d?.tracks?.items||[];
+    $('#res').innerHTML=it.map((t,i)=>`<button data-i="${i}"><img src="${t.album.images.at(-1)?.url||''}" alt=""><span>${t.name}<small>${t.artists.map(a=>a.name).join(', ')}</small></span></button>`).join('')||'<button disabled>Sin resultados</button>';
+    $('#res').style.display='block';
+    $('#res').querySelectorAll('button[data-i]').forEach(b=>b.onclick=()=>{ playList(it.map(t=>t.uri),+b.dataset.i); $('#res').style.display='none'; $('#q').value=''; });
+  },300); };
+
+async function playList(uris,i){
+  if(!deviceId) return toast('El reproductor aún se está conectando. Espera unos segundos.');
+  player.activateElement(); dir=1;
+  const go=async id=>fetch('https://api.spotify.com/v1/me/player/play'+(id?'?device_id='+id:''),{method:'PUT',headers:{Authorization:'Bearer '+await token(),'Content-Type':'application/json'},body:JSON.stringify({uris,offset:{position:i}})});
+  const remote=deviceId==='remote'; let r=await go(remote?null:deviceId);
+  if(remote&&r.status===404){ const dv=await api('/me/player/devices'); const id=dv?.devices?.[0]?.id; if(!id) return toast('Abre la app de Spotify en tu teléfono y vuelve a intentarlo.'); r=await go(id); }
+  if(remote) setTimeout(()=>window.pollNow?.(),900);
+  if(!r.ok){ const d=await r.json().catch(()=>null); toast(d?.error?.message||('Error '+r.status)); }
+}
+
+/* ---------- Cambio de canción ---------- */
+function onTrack(t){
+  const art=t.album.images[0]?.url||'';
+  $('#cdwrap').animate([
+    {transform:'none',opacity:1},
+    {transform:`translateX(${-dir*140}px) rotateY(${dir*80}deg) scale(.8)`,opacity:0,offset:.45},
+    {transform:`translateX(${dir*140}px) rotateY(${-dir*80}deg) scale(.8)`,opacity:0,offset:.5},
+    {transform:'none',opacity:1}],{duration:950,easing:'cubic-bezier(.2,.8,.2,1)'});
+  spinVel=900; // el disco gira rápido al entrar
+  setTimeout(()=>{ $('#label').style.backgroundImage=`url(${art})`; },430);
+  const h=$('#title'); h.textContent=t.name; $('#artist').textContent=t.artists.map(a=>a.name).join(', ');
+  h.animate([{opacity:0,transform:'translateY(10px)'},{opacity:1,transform:'none'}],{duration:500,delay:300,fill:'backwards'});
+  accentFrom(art); loadLyrics(t);
+}
+function accentFrom(url){
+  if(!url) return; const im=new Image(); im.crossOrigin='anonymous';
+  im.onload=()=>{ const c=document.createElement('canvas'); c.width=c.height=16; const x=c.getContext('2d'); x.drawImage(im,0,0,16,16);
+    const d=x.getImageData(0,0,16,16).data; let best=null,sc=-1;
+    for(let i=0;i<d.length;i+=4){ const [r,g,b]=[d[i],d[i+1],d[i+2]],mx=Math.max(r,g,b),mn=Math.min(r,g,b),s=(mx-mn)*(mx/255); if(s>sc&&mx>110){sc=s;best=[r,g,b];} }
+    if(best){ const k=Math.min(1.5,200/Math.max(...best)); document.documentElement.style.setProperty('--accent',`rgb(${best.map(v=>Math.min(255,v*k|0))})`); accent=getComputedStyle(document.documentElement).getPropertyValue('--accent'); } };
+  im.src=url;
+}
+
+/* ---------- Letra (LRCLIB, se consulta en tu navegador) ---------- */
+let lines=[],els=[],curLine=-2,lyTok=0,synced=false;
+async function loadLyrics(t){
+  const tok=++lyTok, box=$('#lines'); lines=[];els=[];curLine=-2;
+  box.innerHTML='<p class="note">Buscando letra…</p>'; box.style.transform='none';
+  let d=null; try{
+    const u=new URLSearchParams({artist_name:t.artists[0].name,track_name:t.name,album_name:t.album.name,duration:Math.round(t.duration_ms/1000)});
+    let r=await fetch('https://lrclib.net/api/get?'+u); if(!r.ok){ u.delete('album_name'); u.delete('duration'); r=await fetch('https://lrclib.net/api/get?'+u); }
+    if(r.ok) d=await r.json();
+  }catch(e){}
+  if(tok!==lyTok) return;
+  if(d?.syncedLyrics){ synced=true; lines=d.syncedLyrics.split('\n').map(l=>{const m=l.match(/^\[(\d+):(\d+\.\d+)\]\s*(.*)/);return m&&m[3]?{t:(+m[1]*60+ +m[2])*1000,x:m[3]}:null}).filter(Boolean); }
+  else if(d?.plainLyrics){ synced=false; lines=d.plainLyrics.split('\n').filter(Boolean).map((x,i)=>({t:i,x})); }
+  if(!lines.length){ box.innerHTML='<p class="note">No encontré letra para esta canción.</p>'; return; }
+  box.innerHTML=lines.map(l=>`<div class="ln">${l.x.replace(/</g,'&lt;')}</div>`).join(''); els=[...box.children];
+  const ly=$('#lyrics'); ly.classList.remove('swap'); void ly.offsetWidth; ly.classList.add('swap');
+  curLine=-2; if(!synced) focusLine(0);
+}
+function focusLine(i){
+  if(i===curLine) return; curLine=i; const H=$('#lyrics').clientHeight;
+  els.forEach((e,k)=>{ const d=k-i,a=Math.abs(d);
+    e.classList.toggle('on',d===0);
+    e.style.opacity=d===0?1:Math.max(.07,.62-a*.14);
+    e.style.filter=`blur(${d===0?0:Math.min(5,a*.9+.6)}px)`;
+    e.style.transform=`translateZ(${d===0?60:-a*45}px) rotateY(${d===0?0:-9-Math.min(a,4)*2}deg) translateX(${d===0?18:0}px)`; });
+  const a=els[Math.max(0,i)]; if(a) $('#lines').style.transform=`translateY(${H/2-a.offsetTop-a.offsetHeight/2}px)`;
+}
+
+/* ---------- Bucle de animación: CD, progreso, letra, visualizador ---------- */
+let angle=0,spinVel=0,last=performance.now(),accent='#7be0c3';
+const cv=$('#viz'),cx=cv.getContext('2d'),N=44,lv=new Array(N).fill(0);
+function frame(now){
+  const dt=Math.min(.05,(now-last)/1000); last=now; const t=now/1000, playing=!paused&&!!curId;
+  // CD: gira y frena con inercia
+  spinVel+=((playing?140:0)-spinVel)*Math.min(1,dt*(playing?2.5:3.2)); angle=(angle+spinVel*dt)%360;
+  $('#spin').style.transform=`rotateZ(${angle}deg)`;
+  // progreso
+  const p=Math.min(dur,paused?pos:pos+(now-posAt));
+  if(!$('#seek').matches(':active')){ $('#seek').value=p/dur*1000; setRange($('#seek')); }
+  $('#cur').textContent=fmt(p); $('#dur').textContent=fmt(dur);
+  // letra sincronizada
+  if(synced&&els.length){ let i=-1; for(let k=0;k<lines.length;k++){ if(lines[k].t<=p+150) i=k; else break; } focusLine(i); }
+  // visualizador (simulado: reacciona al volumen y a la reproducción)
+  const vol=(+$('#vol').value)/100, W=cv.width,Hh=cv.height; cx.clearRect(0,0,W,Hh);
+  const beat=Math.pow(Math.max(0,Math.sin(t*4.4)),6)*.35, bw=W/N;
+  cx.fillStyle=accent;
+  for(let i=0;i<N;i++){
+    const m=Math.abs(i-N/2)/(N/2), n=(Math.sin(t*2.3+i*.55)+Math.sin(t*3.7+i*1.1)*.7+Math.sin(t*.9+i*2.3)*.5)/2.2*.5+.5;
+    const target=playing?Math.min(1,(.12+.7*n*(1-m*.55)+beat*(1-m))*(.15+.85*vol)):0;
+    lv[i]+=(target-lv[i])*(target>lv[i]?.4:.07);
+    const h=Math.max(4,lv[i]*Hh*.95); cx.globalAlpha=.35+lv[i]*.65;
+    cx.beginPath(); cx.roundRect(i*bw+bw*.18,(Hh-h)/2,bw*.64,h,bw*.32); cx.fill();
+  }
+  cx.globalAlpha=1; requestAnimationFrame(frame);
+}
+const fmt=ms=>{const s=Math.floor(ms/1000);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
+requestAnimationFrame(frame);
+
+/* Inclinación 3D con el ratón */
+const stage=$('#stage'),tilt=$('#tilt'); const base='rotateX(14deg) rotateY(-18deg)'; tilt.style.transform=base;
+stage.onmousemove=e=>{ const r=stage.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5; tilt.style.transform=`rotateX(${14-y*26}deg) rotateY(${-18+x*34}deg)`; };
+stage.onmouseleave=()=>tilt.style.transform=base;
+</script>
+</body>
+</html>
